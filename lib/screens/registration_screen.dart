@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:queueless/theme/app_theme.dart';
+import 'package:queueless/services/supabase_service.dart';
 import 'login_screen.dart';
 
 class RegistrationScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     super.dispose();
   }
 
+  //name validation
   String? _validateName(String? value) {
     if (value == null || value.isEmpty) {
       return 'Name is required';
@@ -41,6 +43,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return null;
   }
 
+  //email validation
   String? _validateEmail(String? value) {
     if (value == null || value.isEmpty) {
       return 'Email is required';
@@ -52,6 +55,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return null;
   }
 
+  //password validation
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) {
       return 'Password is required';
@@ -62,6 +66,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return null;
   }
 
+  //confirm password validation to check if it matches the password field
   String? _validateConfirmPassword(String? value) {
     if (value == null || value.isEmpty) {
       return 'Please confirm your password';
@@ -72,6 +77,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return null;
   }
 
+  //registration handler to validate the form 2sec and show success message then navigate to login screen
   void _handleRegistration() {
     if (_formKey.currentState!.validate()) {
       if (!_agreeToTerms) {
@@ -89,30 +95,57 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         _isLoading = true;
       });
 
-      // Simulate registration process
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Registration successful!'),
-              backgroundColor: AppTheme.accentColor,
-              duration: Duration(seconds: 2),
-            ),
-          );
+      // Call Supabase registration
+      SupabaseService()
+          .register(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+            name: _nameController.text.trim(),
+            phone: '', // Optional field, can be added in profile update later
+          )
+          .then((result) {
+            if (!mounted) return;
 
-          // Navigate to login after brief delay
-          Future.delayed(const Duration(seconds: 1), () {
-            if (mounted) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
+            setState(() {
+              _isLoading = false;
+            });
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result['message'] ?? ''),
+                backgroundColor: result['success'] == true
+                    ? AppTheme.accentColor
+                    : AppTheme.errorColor,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+
+            if (result['success'] == true) {
+              // Navigate to login after brief delay
+              Future.delayed(const Duration(seconds: 1), () {
+                if (mounted) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (context) => const LoginScreen(),
+                    ),
+                  );
+                }
+              });
             }
+          })
+          .catchError((e) {
+            if (!mounted) return;
+            setState(() {
+              _isLoading = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error: ${e.toString()}'),
+                backgroundColor: AppTheme.errorColor,
+                duration: const Duration(seconds: 2),
+              ),
+            );
           });
-        }
-      });
     }
   }
 

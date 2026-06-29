@@ -32,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: CustomAppBar(
         onProfileTap: () {
-          /* TODO: profile */
+          Navigator.pushNamed(context, '/profile');
         },
       ),
       backgroundColor: AppColors.backgroundLight,
@@ -67,30 +67,37 @@ class _HomeScreenState extends State<HomeScreen> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: const Color(0xFFE5E7EB)),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.search,
-                              color: AppColors.textSecondary,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                decoration: const InputDecoration.collapsed(
-                                  hintText: 'Search locations...',
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pushNamed(context, '/search');
+                          },
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.search,
+                                color: AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Search locations...',
+                                  style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontFamily: 'Poppins',
+                                  ),
                                 ),
                               ),
-                            ),
-                            IconButton(
-                              onPressed: () {
-                                /* TODO: filter */
-                              },
-                              icon: const Icon(
-                                Icons.filter_list,
-                                color: AppColors.accentTeal,
+                              IconButton(
+                                onPressed: () {
+                                  Navigator.pushNamed(context, '/search');
+                                },
+                                icon: const Icon(
+                                  Icons.filter_list,
+                                  color: AppColors.accentTeal,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -238,10 +245,28 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: CustomBottomNavigation(
         currentIndex: _currentIndex,
-        onTap: (i) {
-          setState(() => _currentIndex = i);
+        onTap: (index) {
+          setState(() => _currentIndex = index);
+          _handleNavigation(index);
         },
       ),
     );
+  }
+
+  void _handleNavigation(int index) {
+    switch (index) {
+      case 0:
+        // Home - stay on current screen
+        break;
+      case 1:
+        Navigator.pushNamed(context, '/search');
+        break;
+      case 2:
+        Navigator.pushNamed(context, '/favorites');
+        break;
+      case 3:
+        Navigator.pushNamed(context, '/profile');
+        break;
+    }
   }
 }

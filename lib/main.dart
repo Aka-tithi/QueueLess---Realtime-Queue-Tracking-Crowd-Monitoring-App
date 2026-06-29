@@ -1,11 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:queueless/screens/splash_screen.dart';
-import 'package:queueless/screens/home_screen.dart';
-import 'package:queueless/screens/login_screen.dart';
-import 'package:queueless/screens/registration_screen.dart';
-import 'package:queueless/theme/app_theme.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:queueless/services/supabase_service.dart';
+import 'firebase_options.dart';
+import 'screens/splash_screen.dart';
+import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/registration_screen.dart';
+import 'screens/profile_screen.dart';
+import 'screens/search_screen.dart';
+import 'screens/favorites_screen.dart';
+import 'theme/app_theme.dart';
 
-void main() {
+//main function to run the app
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize Supabase with your credentials
+  await SupabaseService().initialize(
+    'https://otlsioixomyttxrfimie.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90bHNpb2l4b215dHR4cmZpbWllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0NTAxMTcsImV4cCI6MjA5NzAyNjExN30.tNCVPdhUrkvx4rbhnE_xbPaUZ4M0mzfAUAH2bZm-jW0',
+  );
+
   runApp(const MyApp());
 }
 
@@ -22,6 +38,9 @@ class MyApp extends StatelessWidget {
         '/home': (context) => const HomeScreen(),
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const RegistrationScreen(),
+        '/profile': (context) => const ProfileScreen(),
+        '/search': (context) => const SearchScreen(),
+        '/favorites': (context) => const FavoritesScreen(),
       },
       debugShowCheckedModeBanner: false,
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:queueless/theme/app_theme.dart';
+import 'package:queueless/services/supabase_service.dart';
 import 'registration_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -49,40 +50,111 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _isLoading = true;
       });
-      // Simulate login process
-      Future.delayed(const Duration(seconds: 2), () {
-        if (!mounted) return;
-        setState(() {
-          _isLoading = false;
-        });
 
-        final email = _emailController.text.trim();
-        final password = _passwordController.text;
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
 
-        // Default admin credentials for testing
-        if (email == 'admin@gmail.com' && password == 'admin123') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Welcome admin!'),
-              backgroundColor: AppTheme.accentColor,
-              duration: Duration(seconds: 2),
-            ),
-          );
-          Navigator.of(context).pushReplacementNamed('/home');
-          return;
-        }
+      // Call Supabase login
+      SupabaseService()
+          .login(email: email, password: password)
+          .then((result) {
+            if (!mounted) return;
 
-        // For any other valid email/password (MVP), navigate to Home
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login successful!'),
-            backgroundColor: AppTheme.accentColor,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        Navigator.of(context).pushReplacementNamed('/home');
-      });
+            setState(() {
+              _isLoading = false;
+            });
+
+            if (result['success'] == true) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(result['message'] ?? 'Login successful!'),
+                  backgroundColor: AppTheme.accentColor,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+              Navigator.of(context).pushReplacementNamed('/home');
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(result['message'] ?? 'Login failed'),
+                  backgroundColor: AppTheme.errorColor,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+          })
+          .catchError((e) {
+            if (!mounted) return;
+            setState(() {
+              _isLoading = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error: ${e.toString()}'),
+                backgroundColor: AppTheme.errorColor,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          });
     }
+  }
+
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Reset Password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Enter your email to receive a password reset link'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  hintText: 'Enter your email',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+                if (email.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter your email')),
+                  );
+                  return;
+                }
+
+                final result = await SupabaseService().resetPassword(email);
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result['message'] ?? ''),
+                    backgroundColor: result['success'] == true
+                        ? AppTheme.accentColor
+                        : AppTheme.errorColor,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              },
+              child: const Text('Send'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -180,14 +252,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Password reset functionality coming soon',
-                            ),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
+                        _showForgotPasswordDialog();
                       },
                       child: Text(
                         'Forgot Password?',
