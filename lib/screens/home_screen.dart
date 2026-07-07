@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:queueless/models/location_model.dart';
+import 'package:queueless/services/supabase_service.dart';
 import 'package:queueless/theme/app_theme.dart';
 import 'package:queueless/utils/constants.dart';
 import 'package:queueless/widgets/custom_app_bar.dart';
@@ -19,12 +20,43 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final SupabaseService _supabaseService = SupabaseService();
   int _currentIndex = 0;
   String _city = 'Dhaka';
+  String _searchQuery = ''; // ফিল্টারিং ও সার্চের জন্য
 
   Future<void> _refresh() async {
     await Future.delayed(const Duration(seconds: 1));
     setState(() {});
+  }
+
+  // শহর পরিবর্তনের ডায়ালগ ফাংশন
+  Future<void> _showCityDialog() async {
+    List<String> cities = ['Dhaka', 'Chittagong', 'Sylhet', 'Rajshahi'];
+    String? selected = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text(
+          'Select City',
+          style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold),
+        ),
+        children: cities
+            .map(
+              (c) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, c),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8.0,
+                    horizontal: 12.0,
+                  ),
+                  child: Text(c, style: const TextStyle(fontFamily: 'Poppins')),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (selected != null) setState(() => _city = selected);
   }
 
   @override
@@ -38,82 +70,177 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppColors.backgroundLight,
       body: RefreshIndicator(
         onRefresh: _refresh,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              LocationBanner(
-                city: _city,
-                onChange: () {
-                  /* TODO */
-                },
-                onGps: () {
-                  /* TODO */
-                },
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+        child: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _supabaseService.getLocationsStream(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppColors.primaryBlue,
+                  ),
+                ),
+              );
+            }
+
+            // ডাটাবেজে ডাটা না থাকলে প্রোফাইলের অ্যাক্টিভিটির মতো mockLocations ব্যাকআপ হিসেবে ব্যবহার হবে
+            List<LocationModel> baseLocations = [];
+            if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+              baseLocations = snapshot.data!
+                  .map((json) => LocationModel.fromJson(json))
+                  .toList();
+            } else {
+              baseLocations = List.from(mockLocations);
+            }
+
+            // সিটি ফিল্টার এবং সার্চ লজিক
+            List<LocationModel> filteredLocations = baseLocations.where((loc) {
+              final String cityName = loc.address.toLowerCase();
+              final String locName = loc.name.toLowerCase();
+
+              return cityName.contains(_city.toLowerCase()) &&
+                  locName.contains(_searchQuery.toLowerCase());
+            }).toList();
+
+            // সেফগার্ড: যদি ফিল্টার করার পর কোনো ডাটা ম্যাচ না করে (যেমন: Khulna এর ডাটা), তবে স্ক্রিন খালি না রেখে baseLocations দেখাবে
+            final List<LocationModel> displayLocations =
+                filteredLocations.isNotEmpty
+                ? filteredLocations
+                : baseLocations;
+
+            // কুইক স্ট্যাটসের (Quick Stats) লাইভ ক্যালকুলেশন
+            int totalActive = displayLocations.length;
+            double avgWait = displayLocations.isEmpty
+                ? 0
+                : displayLocations
+                          .map((l) => l.waitTimeMinutes)
+                          .reduce((a, b) => a + b) /
+                      totalActive;
+            double avgRating = displayLocations.isEmpty
+                ? 0
+                : displayLocations
+                          .map((l) => l.rating)
+                          .reduce((a, b) => a + b) /
+                      totalActive;
+
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LocationBanner(
+                    city: _city,
+                    onChange:
+                        _showCityDialog, // শহর পরিবর্তনের অ্যাকশন কানেক্ট করা হলো
+                    onGps: () {
+                      /* GPS Logic */
+                    },
+                  ),
+
+                  // সার্চ বার
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                    ),
+                    child: TextField(
+                      onChanged: (val) {
+                        setState(() {
+                          _searchQuery = val;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Search locations...',
+                        hintStyle: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontFamily: 'Poppins',
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: AppColors.textSecondary,
+                        ),
+                        suffixIcon: const Icon(
+                          Icons.filter_list,
+                          color: AppColors.accentTeal,
+                        ),
+                        fillColor: Colors.white,
+                        filled: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE5E7EB),
+                          ),
                         ),
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.pushNamed(context, '/search');
-                          },
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.search,
-                                color: AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Search locations...',
-                                  style: TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontFamily: 'Poppins',
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () {
-                                  Navigator.pushNamed(context, '/search');
-                                },
-                                icon: const Icon(
-                                  Icons.filter_list,
-                                  color: AppColors.accentTeal,
-                                ),
-                              ),
-                            ],
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE5E7EB),
                           ),
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
 
-              // Quick Stats
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Quick Stats',
+                  // ==================== Quick Stats ====================
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Quick Stats',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                            fontFamily: 'Poppins',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        GridView.count(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 2.3,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          children: [
+                            const QuickStatsCard(
+                              label: 'Queues Tracked',
+                              value: '12',
+                            ),
+                            QuickStatsCard(
+                              label: 'Active Locations',
+                              value: '$totalActive',
+                            ),
+                            QuickStatsCard(
+                              label: 'Avg Wait',
+                              value: '${avgWait.toStringAsFixed(0)} min',
+                            ),
+                            QuickStatsCard(
+                              label: 'Avg Rating',
+                              value: '${avgRating.toStringAsFixed(1)}★',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // ==================== Popular Locations ====================
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                    ),
+                    child: const Text(
+                      'Popular Locations',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -121,126 +248,121 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontFamily: 'Poppins',
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    GridView.count(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 2.3,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      children: const [
-                        QuickStatsCard(label: 'Queues Tracked', value: '12'),
-                        QuickStatsCard(label: 'Active Locations', value: '8'),
-                        QuickStatsCard(label: 'Avg Wait', value: '15 min'),
-                        QuickStatsCard(label: 'Avg Rating', value: '4.2★'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.xl),
-
-              // Featured
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: const Text(
-                  'Popular Locations',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    fontFamily: 'Poppins',
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 200,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
-                  ),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: mockLocations.length,
-                  itemBuilder: (context, index) {
-                    final loc = mockLocations[index];
-                    return FeaturedLocationCard(
-                      location: loc,
-                      onTap: () {
-                        /* TODO */
-                      },
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.xl),
-
-              // Nearby
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: const Text(
-                  'Nearby Locations',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: Column(
-                  children: mockLocations
-                      .map(
-                        (loc) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: NearbyLocationCard(
-                            location: loc,
-                            onTap: () {
-                              /* TODO */
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 200,
+                    child: displayLocations.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No popular locations found here.',
+                              style: TextStyle(fontFamily: 'Poppins'),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.lg,
+                            ),
+                            scrollDirection: Axis.horizontal,
+                            itemCount: displayLocations.length,
+                            itemBuilder: (context, index) {
+                              return FeaturedLocationCard(
+                                location: displayLocations[index],
+                                onTap: () {
+                                  /* Details Screen */
+                                },
+                              );
                             },
                           ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
+                  ),
 
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      /* TODO: view all */
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accentTeal,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // ==================== Nearby Locations ====================
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
                     ),
                     child: const Text(
-                      'View All Locations',
+                      'Nearby Locations',
                       style: TextStyle(
-                        fontFamily: 'Poppins',
+                        fontSize: 18,
                         fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Poppins',
                       ),
                     ),
                   ),
-                ),
-              ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                    ),
+                    child: displayLocations.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No nearby locations found here.',
+                              style: TextStyle(fontFamily: 'Poppins'),
+                            ),
+                          )
+                        : Column(
+                            children: displayLocations
+                                .map(
+                                  (loc) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8.0),
+                                    child: NearbyLocationCard(
+                                      location: loc,
+                                      onTap: () {
+                                        /* Details Screen */
+                                      },
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                  ),
 
-              const SizedBox(height: 32),
-            ],
-          ),
+                  const SizedBox(height: 12),
+                  // ==================== View All Locations Button ====================
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          // এখানে baseLocations (সবগুলো লোকেশন) আর্গুমেন্ট হিসেবে পাঠানো হলো
+                          Navigator.pushNamed(
+                            context,
+                            '/search',
+                            arguments: baseLocations,
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accentTeal,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'View All Locations',
+                          style: TextStyle(
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+                ],
+              ),
+            );
+          },
         ),
       ),
       bottomNavigationBar: CustomBottomNavigation(
@@ -256,7 +378,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _handleNavigation(int index) {
     switch (index) {
       case 0:
-        // Home - stay on current screen
         break;
       case 1:
         Navigator.pushNamed(context, '/search');

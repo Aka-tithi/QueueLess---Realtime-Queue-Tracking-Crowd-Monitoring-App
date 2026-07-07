@@ -1,5 +1,5 @@
-// ignore_for_file: use_super_parameters, deprecated_member_use, unused_import, prefer_final_fields, unused_field
-
+// ignore_for_file: unused_local_variable, use_super_parameters, deprecated_member_use, unused_import, prefer_final_fields, unused_field
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:queueless/models/location_model.dart';
 import 'package:queueless/theme/app_theme.dart';
@@ -28,7 +28,7 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     _searchController = TextEditingController();
     _favoritesProvider = FavoritesProvider();
-    _searchResults = mockLocations;
+    _updateSearchResults();
   }
 
   @override
@@ -44,29 +44,44 @@ class _SearchScreenState extends State<SearchScreen> {
     _updateSearchResults();
   }
 
-  void _updateSearchResults() {
-    List<LocationModel> results = SearchService.searchLocations(
-      mockLocations,
-      _searchController.text,
-    );
+  void _updateSearchResults() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('locations')
+          .select();
+      final List<dynamic> data = response as List<dynamic>;
 
-    if (_selectedCategory.isNotEmpty) {
-      results = SearchService.filterByCategory(results, _selectedCategory);
+      List<LocationModel> results = data
+          .map((json) => LocationModel.fromJson(json))
+          .toList();
+
+      if (_searchController.text.isNotEmpty) {
+        results = SearchService.searchLocations(
+          results,
+          _searchController.text,
+        );
+      }
+
+      if (_selectedCategory.isNotEmpty) {
+        results = SearchService.filterByCategory(results, _selectedCategory);
+      }
+
+      if (_selectedStatus.isNotEmpty) {
+        results = SearchService.filterByStatus(results, _selectedStatus);
+      }
+
+      if (_sortBy == 'rating') {
+        results = SearchService.sortByRating(results);
+      } else if (_sortBy == 'waitTime') {
+        results = SearchService.sortByWaitTime(results);
+      }
+
+      setState(() {
+        _searchResults = results;
+      });
+    } catch (e) {
+      debugPrint("Error fetching data: $e");
     }
-
-    if (_selectedStatus.isNotEmpty) {
-      results = SearchService.filterByStatus(results, _selectedStatus);
-    }
-
-    if (_sortBy == 'rating') {
-      results = SearchService.sortByRating(results);
-    } else if (_sortBy == 'waitTime') {
-      results = SearchService.sortByWaitTime(results);
-    }
-
-    setState(() {
-      _searchResults = results;
-    });
   }
 
   void _clearFilters() {
@@ -76,12 +91,21 @@ class _SearchScreenState extends State<SearchScreen> {
       _selectedStatus = '';
       _sortBy = 'rating';
       _isSearching = false;
-      _searchResults = mockLocations;
     });
+    _updateSearchResults();
   }
 
   @override
   Widget build(BuildContext context) {
+    // হোম স্ক্রিন থেকে পাঠানো সব লোকেশন রিসিভ করা হচ্ছে
+    final arguments = ModalRoute.of(context)?.settings.arguments;
+    List<LocationModel> allLocations = [];
+
+    if (arguments is List<LocationModel>) {
+      allLocations = arguments;
+    } else {
+      allLocations = List.from(mockLocations); // ব্যাকআপ
+    }
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       appBar: AppBar(
@@ -104,7 +128,6 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       body: Column(
         children: [
-          // Search Bar
           Container(
             padding: const EdgeInsets.all(16),
             color: AppColors.primaryBlue,
@@ -113,7 +136,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 8,
+                    vertical: 4,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -159,7 +182,6 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Filter Chips
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -220,7 +242,6 @@ class _SearchScreenState extends State<SearchScreen> {
               ],
             ),
           ),
-          // Results
           Expanded(
             child: _searchResults.isEmpty
                 ? Center(
@@ -433,7 +454,13 @@ class _SearchScreenState extends State<SearchScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryBlue,
                       ),
-                      child: const Text('Apply Filters'),
+                      child: const Text(
+                        'Apply Filters',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -649,7 +676,6 @@ class _SearchScreenState extends State<SearchScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Category Badge
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -672,7 +698,6 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ),
               ),
-              // Status Badge
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -698,7 +723,6 @@ class _SearchScreenState extends State<SearchScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Rating
               Row(
                 children: [
                   Icon(Icons.star, size: 14, color: Colors.amber[600]),
@@ -719,7 +743,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     color: const Color(0xFFE5E7EB),
                   ),
                   const SizedBox(width: 8),
-                  Icon(
+                  const Icon(
                     Icons.schedule,
                     size: 14,
                     color: AppColors.textSecondary,
@@ -735,17 +759,81 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ],
               ),
-              // Queue Count
+
+              // Week 9: Admin buttons Integration
               Row(
                 children: [
-                  Icon(Icons.people, size: 14, color: AppColors.textSecondary),
-                  const SizedBox(width: 3),
+                  const Icon(
+                    Icons.people,
+                    size: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
                   Text(
                     location.queueCount.toString(),
                     style: const TextStyle(
                       fontSize: 12,
-                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
                       fontFamily: 'Poppins',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: () async {
+                      try {
+                        await SearchService.decrementQueue(
+                          location.id,
+                          location.queueCount,
+                        );
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('Error: $e')));
+                        }
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.remove,
+                        size: 14,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () async {
+                      try {
+                        await SearchService.incrementQueue(
+                          location.id,
+                          location.queueCount,
+                        );
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('Error: $e')));
+                        }
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.add,
+                        size: 14,
+                        color: AppColors.primaryBlue,
+                      ),
                     ),
                   ),
                 ],

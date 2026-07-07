@@ -78,7 +78,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   //registration handler to validate the form 2sec and show success message then navigate to login screen
-  void _handleRegistration() {
+  void _handleRegistration() async {
     if (_formKey.currentState!.validate()) {
       if (!_agreeToTerms) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -95,57 +95,55 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         _isLoading = true;
       });
 
-      // Call Supabase registration
-      SupabaseService()
-          .register(
-            email: _emailController.text.trim(),
-            password: _passwordController.text,
-            name: _nameController.text.trim(),
-            phone: '', // Optional field, can be added in profile update later
-          )
-          .then((result) {
-            if (!mounted) return;
+      try {
+        final response = await SupabaseService().client.auth.signUp(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
 
-            setState(() {
-              _isLoading = false;
-            });
+        if (!mounted) return;
 
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(result['message'] ?? ''),
-                backgroundColor: result['success'] == true
-                    ? AppTheme.accentColor
-                    : AppTheme.errorColor,
-                duration: const Duration(seconds: 2),
-              ),
-            );
+        setState(() {
+          _isLoading = false;
+        });
 
-            if (result['success'] == true) {
-              // Navigate to login after brief delay
-              Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (context) => const LoginScreen(),
-                    ),
-                  );
-                }
-              });
+        final success = response.user != null || response.session != null;
+        final message = success
+            ? 'Registration successful! Please check your email.'
+            : 'Registration failed.';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: success
+                ? AppTheme.accentColor
+                : AppTheme.errorColor,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        if (success) {
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+              );
             }
-          })
-          .catchError((e) {
-            if (!mounted) return;
-            setState(() {
-              _isLoading = false;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error: ${e.toString()}'),
-                backgroundColor: AppTheme.errorColor,
-                duration: const Duration(seconds: 2),
-              ),
-            );
           });
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: AppTheme.errorColor,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 

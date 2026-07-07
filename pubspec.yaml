@@ -40,7 +40,7 @@ dependencies:
   cloud_firestore: ^6.4.1
   
   # Supabase for authentication and database
-  supabase_flutter: ^2.8.0
+  supabase_flutter: ^2.15.1
   supabase: ^2.3.0
   uuid: ^4.5.3
 

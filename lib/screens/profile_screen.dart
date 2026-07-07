@@ -1,4 +1,4 @@
-// ignore_for_file: use_null_aware_elements, deprecated_member_use, use_super_parameters, prefer_final_fields, unused_field
+// ignore_for_file: unnecessary_type_check, use_build_context_synchronously, unused_element, use_null_aware_elements, deprecated_member_use, use_super_parameters, prefer_final_fields, unused_field
 
 import 'package:flutter/material.dart';
 import 'package:queueless/models/location_model.dart';
@@ -6,6 +6,7 @@ import 'package:queueless/models/user_model.dart';
 import 'package:queueless/utils/constants.dart';
 import 'package:queueless/services/search_service.dart';
 import 'package:queueless/services/favorites_provider.dart';
+import 'package:queueless/services/supabase_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -18,6 +19,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late FavoritesProvider _favoritesProvider;
+  final SupabaseService _supabaseService = SupabaseService();
+
+  UserModel? _userProfile;
+  bool _isLoading = true;
   String _searchQuery = '';
   String _selectedCategory = '';
   List<LocationModel> _searchResults = [];
@@ -28,6 +33,229 @@ class _ProfileScreenState extends State<ProfileScreen>
     _tabController = TabController(length: 3, vsync: this);
     _favoritesProvider = FavoritesProvider();
     _searchResults = mockLocations;
+    _fetchBackendProfile();
+  }
+
+  Future<void> _fetchBackendProfile() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // সুপাবেস অথেন্টিকেশন সেশন থেকে কারেন্ট ইউজার ডাটা নেওয়া হচ্ছে
+      final user = _supabaseService.client.auth.currentUser;
+      if (user != null) {
+        // মেটাডাটা থেকে নাম নেওয়া হচ্ছে, না থাকলে রেজিস্ট্রেশনের নাম 'tt' ব্যাকআপ রাখা হয়েছে
+        String currentUserName = user.userMetadata?['name'] ?? 'tt';
+        String currentUserEmail = user.email ?? 'aka@gmail.com';
+
+        setState(() {
+          _userProfile = UserModel(
+            id: user.id,
+            name: currentUserName, // এখানে এখন ডাইনামিক নাম শো করবে
+            email: currentUserEmail,
+            phone: user.phone ?? '',
+            profileImage: '👤',
+            status: 'Active',
+            totalVisits: 12,
+            averageRating: 4.2,
+            favoriteCount: 0,
+            joinDate: DateTime.tryParse(user.createdAt) ?? DateTime.now(),
+            favoriteLocationIds: [],
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching backend profile: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// Profile data update function - Fixed Database Column issue
+  Future<void> _updateProfileData({
+    required String newName,
+    required String newPhone,
+    required String newStatus,
+    required String newEmoji,
+    required String newEmail,
+  }) async {
+    if (_userProfile == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final userId = _supabaseService.client.auth.currentUser?.id;
+      if (userId != null) {
+        // সুপাবেসের profiles টেবিলে ডাটা সেভ হচ্ছে
+        // আপনার স্ক্রিনশটের এরর ফিক্স করতে 'profile_image' বাদ দিয়ে শুধু name, phone, status পাঠানো হচ্ছে
+        await _supabaseService.client
+            .from('profiles')
+            .update({
+              'name': newName,
+              'phone': newPhone,
+              'status': newStatus,
+              // 'profile_image' কলামটি ডাটাবেজে না থাকায় এটি কমেন্ট আউট করা হলো যাতে এরর না আসে।
+            })
+            .eq('id', userId);
+
+        // অ্যাপের লোকাল স্ক্রিনে বা নিচে ডাটা ইনস্ট্যান্ট আপডেট করার লজিক
+        setState(() {
+          _userProfile = UserModel(
+            id: _userProfile!.id,
+            name: newName,
+            email: newEmail, // ইমেইল বক্সের নতুন ডাটা এখানে সেট হবে
+            phone: newPhone,
+            profileImage: newEmoji,
+            status: newStatus,
+            totalVisits: _userProfile!.totalVisits,
+            averageRating: _userProfile!.averageRating,
+            favoriteCount: _userProfile!.favoriteCount,
+            joinDate: _userProfile!.joinDate,
+            favoriteLocationIds: _userProfile!.favoriteLocationIds,
+          );
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated successfully!')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error updating profile: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update profile: $e')));
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// Edit Profile Dialog (Email Box now writable)
+  void _showEditProfileDialog() {
+    final activeUser = _userProfile ?? mockUser;
+    final TextEditingController nameController = TextEditingController(
+      text: activeUser.name,
+    );
+    final TextEditingController phoneController = TextEditingController(
+      text: activeUser.phone,
+    );
+    final TextEditingController statusController = TextEditingController(
+      text: activeUser.status,
+    );
+    final TextEditingController emojiController = TextEditingController(
+      text: activeUser.profileImage,
+    );
+    final TextEditingController emailController = TextEditingController(
+      text: activeUser.email,
+    ); // ইমেইল কন্ট্রোলার
+    final GlobalKey<FormState> dialogFormKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text(
+            'Edit Profile',
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Form(
+            key: dialogFormKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      prefixIcon: Icon(Icons.person),
+                    ),
+                    validator: (value) => value == null || value.isEmpty
+                        ? 'Name cannot be empty'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: phoneController,
+                    decoration: const InputDecoration(
+                      labelText: 'Phone Number',
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: statusController,
+                    decoration: const InputDecoration(
+                      labelText: 'Status / Bio',
+                      prefixIcon: Icon(Icons.info_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: emojiController,
+                    decoration: const InputDecoration(
+                      labelText: 'Profile Avatar Emoji',
+                      prefixIcon: Icon(Icons.face),
+                      hintText: 'e.g. 👤, 😎',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // ইমেইল বক্সটি এখন এডিটেবল (enabled: true) করা হয়েছে
+                  TextFormField(
+                    controller: emailController,
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      prefixIcon: Icon(Icons.email),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) => value == null || value.isEmpty
+                        ? 'Email cannot be empty'
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+              ),
+              onPressed: () {
+                if (dialogFormKey.currentState!.validate()) {
+                  Navigator.pop(context);
+                  _updateProfileData(
+                    newName: nameController.text.trim(),
+                    newPhone: phoneController.text.trim(),
+                    newStatus: statusController.text.trim(),
+                    newEmoji: emojiController.text.trim().isEmpty
+                        ? '👤'
+                        : emojiController.text.trim(),
+                    newEmail: emailController.text
+                        .trim(), // নতুন ইমেইল পাঠানো হচ্ছে
+                  );
+                }
+              },
+              child: const Text('Save', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -39,20 +267,18 @@ class _ProfileScreenState extends State<ProfileScreen>
   void _updateSearch(String query) {
     setState(() {
       _searchQuery = query;
-      _filterResults();
+      _filterLocations();
     });
   }
 
-  void _filterResults() {
-    List<LocationModel> results = SearchService.searchLocations(
-      mockLocations,
-      _searchQuery,
-    );
-
-    if (_selectedCategory.isNotEmpty) {
+  void _filterLocations() {
+    List<LocationModel> results = mockLocations;
+    if (_searchQuery.isNotEmpty) {
+      results = SearchService.searchLocations(results, _searchQuery);
+    }
+    if (_selectedCategory.isNotEmpty && _selectedCategory != 'All') {
       results = SearchService.filterByCategory(results, _selectedCategory);
     }
-
     setState(() {
       _searchResults = results;
     });
@@ -60,155 +286,111 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.backgroundLight,
+        body: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+          ),
+        ),
+      );
+    }
+
+    final activeUser = _userProfile ?? mockUser;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) {
-          return [
+        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+          return <Widget>[
             SliverAppBar(
-              expandedHeight: 280,
+              expandedHeight: 250.0,
               floating: false,
               pinned: true,
               backgroundColor: AppColors.primaryBlue,
-              elevation: 0,
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.primaryBlue,
-                        AppColors.primaryBlueDark,
-                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
                     ),
                   ),
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const SizedBox(height: 40),
-                      // Profile Avatar and User Info
-                      Column(
-                        children: [
-                          Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 4),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Text(
-                                mockUser.profileImage,
-                                style: const TextStyle(fontSize: 50),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            mockUser.name,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.accentTeal.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: AppColors.accentTeal.withOpacity(0.5),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: AppColors.accentTeal,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  mockUser.status,
-                                  style: const TextStyle(
-                                    color: AppColors.accentTeal,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    fontFamily: 'Poppins',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                      CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Colors.white,
+                        child: Text(
+                          activeUser.profileImage,
+                          style: const TextStyle(fontSize: 36),
+                        ),
                       ),
-                      const SizedBox(height: 20),
-                      // User Stats
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildStatCard(
-                              title: 'Visits',
-                              value: mockUser.totalVisits.toString(),
-                              icon: '📍',
-                            ),
-                            _buildStatCard(
-                              title: 'Rating',
-                              value: mockUser.averageRating.toString(),
-                              icon: '⭐',
-                            ),
-                            _buildStatCard(
-                              title: 'Favorites',
-                              value: mockUser.favoriteCount.toString(),
-                              icon: '❤️',
-                            ),
-                          ],
+                      const SizedBox(height: 12),
+                      Text(
+                        activeUser.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        activeUser.email,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 14,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          activeUser.status,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              bottom: TabBar(
-                controller: _tabController,
-                indicatorColor: Colors.white,
-                indicatorWeight: 3,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  fontFamily: 'Poppins',
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SliverAppBarDelegate(
+                TabBar(
+                  controller: _tabController,
+                  labelColor: AppColors.primaryBlue,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  indicatorColor: AppColors.primaryBlue,
+                  labelStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Poppins',
+                  ),
+                  tabs: const [
+                    Tab(text: "Activity"),
+                    Tab(text: "Favorites"),
+                    Tab(text: "Settings"),
+                  ],
                 ),
-                unselectedLabelStyle: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                  fontFamily: 'Poppins',
-                ),
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
-                tabs: const [
-                  Tab(text: 'Recent'),
-                  Tab(text: 'Favorites'),
-                  Tab(text: 'Settings'),
-                ],
               ),
             ),
           ];
@@ -216,11 +398,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         body: TabBarView(
           controller: _tabController,
           children: [
-            // Recent Activity Tab
-            _buildRecentActivityTab(),
-            // Favorites Tab
+            _buildActivityTab(),
             _buildFavoritesTab(),
-            // Settings Tab
             _buildSettingsTab(),
           ],
         ),
@@ -228,733 +407,144 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required String icon,
-  }) {
-    return Column(
+  Widget _buildActivityTab() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      itemCount: _searchResults.length,
+      itemBuilder: (context, index) {
+        final location = _searchResults[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: ListTile(
+            leading: Text(location.icon, style: const TextStyle(fontSize: 24)),
+            title: Text(
+              location.name,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text(
+              location.address,
+              style: const TextStyle(fontFamily: 'Poppins'),
+            ),
+            trailing: Icon(
+              Icons.circle,
+              color: location.status == 'busy'
+                  ? AppColors.statusBusy
+                  : AppColors.statusEmpty,
+              size: 12,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFavoritesTab() {
+    final favoriteLocations = _favoritesProvider.getFavoriteLocations(
+      mockLocations,
+    );
+    if (favoriteLocations.isEmpty) {
+      return const Center(child: Text("No favorites added yet."));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      itemCount: favoriteLocations.length,
+      itemBuilder: (context, index) {
+        final location = favoriteLocations[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: ListTile(
+            leading: Text(location.icon, style: const TextStyle(fontSize: 24)),
+            title: Text(
+              location.name,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text('Wait: ~${location.waitTimeMinutes} mins'),
+            trailing: IconButton(
+              icon: const Icon(Icons.favorite, color: AppColors.statusBusy),
+              onPressed: () {
+                setState(() {
+                  _favoritesProvider.toggleFavorite(location.id);
+                });
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSettingsTab() {
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
       children: [
-        Text(icon, style: const TextStyle(fontSize: 28)),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-            fontFamily: 'Poppins',
+        ListTile(
+          leading: const Icon(
+            Icons.person_outline,
+            color: AppColors.primaryBlue,
           ),
+          title: const Text(
+            "Edit Profile",
+            style: TextStyle(fontFamily: 'Poppins'),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showEditProfileDialog(),
         ),
-        const SizedBox(height: 2),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.white.withOpacity(0.8),
-            fontFamily: 'Poppins',
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.logout, color: AppColors.statusBusy),
+          title: const Text(
+            "Logout",
+            style: TextStyle(
+              color: AppColors.statusBusy,
+              fontFamily: 'Poppins',
+            ),
           ),
+          onTap: () => _showLogoutDialog(),
         ),
       ],
     );
   }
 
-  Widget _buildRecentActivityTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Search Bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.search, color: AppColors.textSecondary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    onChanged: _updateSearch,
-                    decoration: const InputDecoration(
-                      hintText: 'Search visited locations...',
-                      border: InputBorder.none,
-                      hintStyle: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Category Filter
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildFilterChip(
-                  label: 'All',
-                  selected: _selectedCategory.isEmpty,
-                  onTap: () {
-                    setState(() => _selectedCategory = '');
-                    _filterResults();
-                  },
-                ),
-                _buildFilterChip(
-                  label: 'Banking',
-                  selected: _selectedCategory == 'Banking',
-                  onTap: () {
-                    setState(() => _selectedCategory = 'Banking');
-                    _filterResults();
-                  },
-                ),
-                _buildFilterChip(
-                  label: 'Healthcare',
-                  selected: _selectedCategory == 'Healthcare',
-                  onTap: () {
-                    setState(() => _selectedCategory = 'Healthcare');
-                    _filterResults();
-                  },
-                ),
-                _buildFilterChip(
-                  label: 'Government',
-                  selected: _selectedCategory == 'Government',
-                  onTap: () {
-                    setState(() => _selectedCategory = 'Government');
-                    _filterResults();
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          // Recent Locations List
-          if (_searchResults.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                child: Column(
-                  children: [
-                    Text('🔍', style: const TextStyle(fontSize: 48)),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'No locations found',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Try adjusting your search',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            Column(
-              children: _searchResults
-                  .map((location) => _buildLocationCard(location))
-                  .toList(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFavoritesTab() {
-    final favorites = _favoritesProvider.getFavoriteLocations(mockLocations);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (favorites.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 60),
-                child: Column(
-                  children: [
-                    Text('❤️', style: const TextStyle(fontSize: 60)),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'No favorites yet',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Start adding locations to your favorites',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            Column(
-              children: [
-                Text(
-                  '${favorites.length} Favorite${favorites.length > 1 ? 's' : ''}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Column(
-                  children: favorites
-                      .map((location) => _buildFavoriteCard(location))
-                      .toList(),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingsTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSettingSection('Account'),
-          _buildSettingItem(
-            icon: Icons.person,
-            title: 'Edit Profile',
-            subtitle: 'Update your personal information',
-          ),
-          _buildSettingItem(
-            icon: Icons.email,
-            title: 'Email Address',
-            subtitle: mockUser.email,
-          ),
-          _buildSettingItem(
-            icon: Icons.phone,
-            title: 'Phone Number',
-            subtitle: mockUser.phone,
-          ),
-          const SizedBox(height: 24),
-          _buildSettingSection('Preferences'),
-          _buildSettingItem(
-            icon: Icons.notifications,
-            title: 'Notifications',
-            subtitle: 'Manage notification settings',
-            trailing: Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          _buildSettingItem(
-            icon: Icons.language,
-            title: 'Language',
-            subtitle: 'English',
-            trailing: Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildSettingSection('About'),
-          _buildSettingItem(
-            icon: Icons.info,
-            title: 'About QueueLess',
-            subtitle: 'Version 1.0.0',
-          ),
-          _buildSettingItem(
-            icon: Icons.privacy_tip,
-            title: 'Privacy Policy',
-            subtitle: 'Read our privacy policy',
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: () {
-                _showLogoutConfirmDialog();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.statusBusy,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Logout',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                  fontFamily: 'Poppins',
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingSection(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textSecondary,
-          fontFamily: 'Poppins',
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    Widget? trailing,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.primaryBlue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Center(
-              child: Icon(icon, color: AppColors.primaryBlue, size: 20),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (trailing != null) trailing,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLocationCard(LocationModel location) {
-    final isFavorite = _favoritesProvider.isFavorite(location.id);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Text(location.icon, style: const TextStyle(fontSize: 32)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  location.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    fontFamily: 'Poppins',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${location.address} • ${location.category}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Poppins',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.star, size: 14, color: Colors.amber[600]),
-                    const SizedBox(width: 3),
-                    Text(
-                      location.rating.toString(),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.schedule,
-                      size: 14,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      '${location.waitTimeMinutes} min',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () {
-              _favoritesProvider.toggleFavorite(location.id);
-              setState(() {});
-            },
-            icon: Icon(
-              isFavorite ? Icons.favorite : Icons.favorite_border,
-              color: isFavorite
-                  ? AppColors.statusBusy
-                  : AppColors.textSecondary,
-              size: 20,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFavoriteCard(LocationModel location) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(location.icon, style: const TextStyle(fontSize: 36)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      location.name,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Poppins',
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      location.address,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  _favoritesProvider.removeFavorite(location.id);
-                  setState(() {});
-                },
-                icon: const Icon(
-                  Icons.favorite,
-                  color: AppColors.statusBusy,
-                  size: 22,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Category Badge
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.accentTeal.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: AppColors.accentTeal.withOpacity(0.3),
-                  ),
-                ),
-                child: Text(
-                  location.category,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accentTeal,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ),
-              // Stats Row
-              Row(
-                children: [
-                  // Rating
-                  Row(
-                    children: [
-                      Icon(Icons.star, size: 14, color: Colors.amber[600]),
-                      const SizedBox(width: 3),
-                      Text(
-                        location.rating.toString(),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                  // Wait Time
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.schedule,
-                        size: 14,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${location.waitTimeMinutes} min',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                  // Queue Count
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.people,
-                        size: 14,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        location.queueCount.toString(),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.accentTeal : Colors.white,
-          border: Border.all(
-            color: selected ? AppColors.accentTeal : const Color(0xFFE5E7EB),
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : AppColors.textSecondary,
-            fontFamily: 'Poppins',
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showLogoutConfirmDialog() {
+  void _showLogoutDialog() {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
           title: const Text(
             'Logout',
             style: TextStyle(
-              fontSize: 18,
+              fontFamily: 'Poppins',
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-              fontFamily: 'Poppins',
             ),
           ),
-          content: const Text(
-            'Are you sure you want to logout from QueueLess?',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppColors.textSecondary,
-              fontFamily: 'Poppins',
-            ),
-          ),
+          content: const Text('Are you sure you want to logout?'),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text(
-                'Cancel',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                  fontFamily: 'Poppins',
-                ),
-              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _performLogout();
-              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.statusBusy,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
               ),
+              onPressed: () async {
+                Navigator.pop(context);
+                await _supabaseService.client.auth.signOut();
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/login',
+                  (route) => false,
+                );
+              },
               child: const Text(
                 'Logout',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                  fontFamily: 'Poppins',
-                ),
+                style: TextStyle(color: Colors.white),
               ),
             ),
           ],
@@ -962,8 +552,29 @@ class _ProfileScreenState extends State<ProfileScreen>
       },
     );
   }
+}
 
-  void _performLogout() {
-    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  _SliverAppBarDelegate(this._tabBar);
+
+  final TabBar _tabBar;
+
+  @override
+  double get minExtent => _tabBar.preferredSize.height;
+  @override
+  double get maxExtent => _tabBar.preferredSize.height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(color: Colors.white, child: _tabBar);
+  }
+
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
+    return false;
   }
 }

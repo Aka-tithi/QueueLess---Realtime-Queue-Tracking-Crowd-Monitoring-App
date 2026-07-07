@@ -1,3 +1,4 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:queueless/models/location_model.dart';
 
 class SearchService {
@@ -5,16 +6,13 @@ class SearchService {
     List<LocationModel> locations,
     String query,
   ) {
-    if (query.isEmpty) {
-      return locations;
-    }
-
+    final q = query.toLowerCase();
     return locations
         .where(
-          (location) =>
-              location.name.toLowerCase().contains(query.toLowerCase()) ||
-              location.address.toLowerCase().contains(query.toLowerCase()) ||
-              location.category.toLowerCase().contains(query.toLowerCase()),
+          (l) =>
+              l.name.toLowerCase().contains(q) ||
+              l.category.toLowerCase().contains(q) ||
+              l.address.toLowerCase().contains(q),
         )
         .toList();
   }
@@ -23,12 +21,8 @@ class SearchService {
     List<LocationModel> locations,
     String category,
   ) {
-    if (category.isEmpty) {
-      return locations;
-    }
-
     return locations
-        .where((location) => location.category == category)
+        .where((l) => l.category.toLowerCase() == category.toLowerCase())
         .toList();
   }
 
@@ -36,22 +30,35 @@ class SearchService {
     List<LocationModel> locations,
     String status,
   ) {
-    if (status.isEmpty) {
-      return locations;
-    }
-
-    return locations.where((location) => location.status == status).toList();
+    return locations
+        .where((l) => l.status.toLowerCase() == status.toLowerCase())
+        .toList();
   }
 
   static List<LocationModel> sortByRating(List<LocationModel> locations) {
-    final sorted = [...locations];
+    final sorted = List<LocationModel>.from(locations);
     sorted.sort((a, b) => b.rating.compareTo(a.rating));
     return sorted;
   }
 
   static List<LocationModel> sortByWaitTime(List<LocationModel> locations) {
-    final sorted = [...locations];
+    final sorted = List<LocationModel>.from(locations);
     sorted.sort((a, b) => a.waitTimeMinutes.compareTo(b.waitTimeMinutes));
     return sorted;
+  }
+
+  static Future<void> incrementQueue(String locationId, int currentCount) async {
+    await Supabase.instance.client
+        .from('locations')
+        .update({'queue_count': currentCount + 1})
+        .eq('id', locationId);
+  }
+
+  static Future<void> decrementQueue(String locationId, int currentCount) async {
+    if (currentCount <= 0) return;
+    await Supabase.instance.client
+        .from('locations')
+        .update({'queue_count': currentCount - 1})
+        .eq('id', locationId);
   }
 }

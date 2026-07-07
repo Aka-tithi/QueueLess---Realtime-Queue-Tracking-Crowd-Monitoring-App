@@ -1,6 +1,9 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:queueless/theme/app_theme.dart';
 import 'package:queueless/services/supabase_service.dart';
+import 'package:supabase/src/supabase_client.dart';
 import 'registration_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -45,7 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return null;
   }
 
-  void _handleLogin() {
+  void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
@@ -54,48 +57,50 @@ class _LoginScreenState extends State<LoginScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
 
-      // Call Supabase login
-      SupabaseService()
-          .login(email: email, password: password)
-          .then((result) {
-            if (!mounted) return;
+      try {
+        final result = await SupabaseService().client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
 
-            setState(() {
-              _isLoading = false;
-            });
+        if (!mounted) return;
 
-            if (result['success'] == true) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(result['message'] ?? 'Login successful!'),
-                  backgroundColor: AppTheme.accentColor,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-              Navigator.of(context).pushReplacementNamed('/home');
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(result['message'] ?? 'Login failed'),
-                  backgroundColor: AppTheme.errorColor,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
-          })
-          .catchError((e) {
-            if (!mounted) return;
-            setState(() {
-              _isLoading = false;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error: ${e.toString()}'),
-                backgroundColor: AppTheme.errorColor,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          });
+        setState(() {
+          _isLoading = false;
+        });
+
+        // Supabase AuthResponse no longer exposes `error`; check session/user instead
+        if (result.user != null || (result.session != null)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Login successful!'),
+              backgroundColor: AppTheme.accentColor,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          Navigator.of(context).pushReplacementNamed('/home');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Login failed'),
+              backgroundColor: AppTheme.errorColor,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: AppTheme.errorColor,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -136,18 +141,29 @@ class _LoginScreenState extends State<LoginScreen> {
                   return;
                 }
 
-                final result = await SupabaseService().resetPassword(email);
-                Navigator.pop(context);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(result['message'] ?? ''),
-                    backgroundColor: result['success'] == true
-                        ? AppTheme.accentColor
-                        : AppTheme.errorColor,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
+                try {
+                  var client2 = SupabaseService().client;
+                  await newMethod(client2).auth.resetPasswordForEmail(email);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text(
+                        'If the email exists, a password reset link has been sent.',
+                      ),
+                      backgroundColor: AppTheme.accentColor,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                } catch (e) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: ${e.toString()}'),
+                      backgroundColor: AppTheme.errorColor,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
               },
               child: const Text('Send'),
             ),
@@ -156,6 +172,8 @@ class _LoginScreenState extends State<LoginScreen> {
       },
     );
   }
+
+  SupabaseClient newMethod(SupabaseClient client2) => client2;
 
   @override
   Widget build(BuildContext context) {
