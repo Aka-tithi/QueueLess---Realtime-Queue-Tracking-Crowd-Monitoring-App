@@ -1,580 +1,211 @@
-// ignore_for_file: unnecessary_type_check, use_build_context_synchronously, unused_element, use_null_aware_elements, deprecated_member_use, use_super_parameters, prefer_final_fields, unused_field
-
+// ignore_for_file: deprecated_member_use, unnecessary_underscores, use_build_context_synchronously
 import 'package:flutter/material.dart';
-import 'package:queueless/models/location_model.dart';
-import 'package:queueless/models/user_model.dart';
-import 'package:queueless/utils/constants.dart';
-import 'package:queueless/services/search_service.dart';
-import 'package:queueless/services/favorites_provider.dart';
-import 'package:queueless/services/supabase_service.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../theme/app_theme.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
-
+  const ProfileScreen({super.key});
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  late FavoritesProvider _favoritesProvider;
-  final SupabaseService _supabaseService = SupabaseService();
-
-  UserModel? _userProfile;
-  bool _isLoading = true;
-  String _searchQuery = '';
-  String _selectedCategory = '';
-  List<LocationModel> _searchResults = [];
+class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabCtrl;
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  bool _editLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _favoritesProvider = FavoritesProvider();
-    _searchResults = mockLocations;
-    _fetchBackendProfile();
-  }
-
-  Future<void> _fetchBackendProfile() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      // সুপাবেস অথেন্টিকেশন সেশন থেকে কারেন্ট ইউজার ডাটা নেওয়া হচ্ছে
-      final user = _supabaseService.client.auth.currentUser;
-      if (user != null) {
-        // মেটাডাটা থেকে নাম নেওয়া হচ্ছে, না থাকলে রেজিস্ট্রেশনের নাম 'tt' ব্যাকআপ রাখা হয়েছে
-        String currentUserName = user.userMetadata?['name'] ?? 'tt';
-        String currentUserEmail = user.email ?? 'aka@gmail.com';
-
-        setState(() {
-          _userProfile = UserModel(
-            id: user.id,
-            name: currentUserName, // এখানে এখন ডাইনামিক নাম শো করবে
-            email: currentUserEmail,
-            phone: user.phone ?? '',
-            profileImage: '👤',
-            status: 'Active',
-            totalVisits: 12,
-            averageRating: 4.2,
-            favoriteCount: 0,
-            joinDate: DateTime.tryParse(user.createdAt) ?? DateTime.now(),
-            favoriteLocationIds: [],
-          );
-        });
-      }
-    } catch (e) {
-      debugPrint('Error fetching backend profile: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  /// Profile data update function - Fixed Database Column issue
-  Future<void> _updateProfileData({
-    required String newName,
-    required String newPhone,
-    required String newStatus,
-    required String newEmoji,
-    required String newEmail,
-  }) async {
-    if (_userProfile == null) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final userId = _supabaseService.client.auth.currentUser?.id;
-      if (userId != null) {
-        // সুপাবেসের profiles টেবিলে ডাটা সেভ হচ্ছে
-        // আপনার স্ক্রিনশটের এরর ফিক্স করতে 'profile_image' বাদ দিয়ে শুধু name, phone, status পাঠানো হচ্ছে
-        await _supabaseService.client
-            .from('profiles')
-            .update({
-              'name': newName,
-              'phone': newPhone,
-              'status': newStatus,
-              // 'profile_image' কলামটি ডাটাবেজে না থাকায় এটি কমেন্ট আউট করা হলো যাতে এরর না আসে।
-            })
-            .eq('id', userId);
-
-        // অ্যাপের লোকাল স্ক্রিনে বা নিচে ডাটা ইনস্ট্যান্ট আপডেট করার লজিক
-        setState(() {
-          _userProfile = UserModel(
-            id: _userProfile!.id,
-            name: newName,
-            email: newEmail, // ইমেইল বক্সের নতুন ডাটা এখানে সেট হবে
-            phone: newPhone,
-            profileImage: newEmoji,
-            status: newStatus,
-            totalVisits: _userProfile!.totalVisits,
-            averageRating: _userProfile!.averageRating,
-            favoriteCount: _userProfile!.favoriteCount,
-            joinDate: _userProfile!.joinDate,
-            favoriteLocationIds: _userProfile!.favoriteLocationIds,
-          );
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully!')),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error updating profile: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update profile: $e')));
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  /// Edit Profile Dialog (Email Box now writable)
-  void _showEditProfileDialog() {
-    final activeUser = _userProfile ?? mockUser;
-    final TextEditingController nameController = TextEditingController(
-      text: activeUser.name,
-    );
-    final TextEditingController phoneController = TextEditingController(
-      text: activeUser.phone,
-    );
-    final TextEditingController statusController = TextEditingController(
-      text: activeUser.status,
-    );
-    final TextEditingController emojiController = TextEditingController(
-      text: activeUser.profileImage,
-    );
-    final TextEditingController emailController = TextEditingController(
-      text: activeUser.email,
-    ); // ইমেইল কন্ট্রোলার
-    final GlobalKey<FormState> dialogFormKey = GlobalKey<FormState>();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text(
-            'Edit Profile',
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Form(
-            key: dialogFormKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Name',
-                      prefixIcon: Icon(Icons.person),
-                    ),
-                    validator: (value) => value == null || value.isEmpty
-                        ? 'Name cannot be empty'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: phoneController,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone Number',
-                      prefixIcon: Icon(Icons.phone),
-                    ),
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: statusController,
-                    decoration: const InputDecoration(
-                      labelText: 'Status / Bio',
-                      prefixIcon: Icon(Icons.info_outline),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: emojiController,
-                    decoration: const InputDecoration(
-                      labelText: 'Profile Avatar Emoji',
-                      prefixIcon: Icon(Icons.face),
-                      hintText: 'e.g. 👤, 😎',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // ইমেইল বক্সটি এখন এডিটেবল (enabled: true) করা হয়েছে
-                  TextFormField(
-                    controller: emailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Email Address',
-                      prefixIcon: Icon(Icons.email),
-                    ),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) => value == null || value.isEmpty
-                        ? 'Email cannot be empty'
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryBlue,
-              ),
-              onPressed: () {
-                if (dialogFormKey.currentState!.validate()) {
-                  Navigator.pop(context);
-                  _updateProfileData(
-                    newName: nameController.text.trim(),
-                    newPhone: phoneController.text.trim(),
-                    newStatus: statusController.text.trim(),
-                    newEmoji: emojiController.text.trim().isEmpty
-                        ? '👤'
-                        : emojiController.text.trim(),
-                    newEmail: emailController.text
-                        .trim(), // নতুন ইমেইল পাঠানো হচ্ছে
-                  );
-                }
-              },
-              child: const Text('Save', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
+    _tabCtrl = TabController(length: 3, vsync: this);
+    final user = Supabase.instance.client.auth.currentUser;
+    _nameCtrl.text = user?.userMetadata?['full_name'] ?? '';
+    _phoneCtrl.text = user?.userMetadata?['phone'] ?? '';
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabCtrl.dispose();
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
 
-  void _updateSearch(String query) {
-    setState(() {
-      _searchQuery = query;
-      _filterLocations();
-    });
+  Future<void> _saveProfile() async {
+    setState(() => _editLoading = true);
+    try {
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(data: {'full_name': _nameCtrl.text.trim(), 'phone': _phoneCtrl.text.trim()}),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated!'), backgroundColor: AppColors.statusEmpty),
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.statusBusy));
+    } finally {
+      if (mounted) setState(() => _editLoading = false);
+    }
   }
 
-  void _filterLocations() {
-    List<LocationModel> results = mockLocations;
-    if (_searchQuery.isNotEmpty) {
-      results = SearchService.searchLocations(results, _searchQuery);
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Logout', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        content: Text('Are you sure you want to logout?', style: GoogleFonts.poppins()),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusBusy),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await Supabase.instance.client.auth.signOut();
+      if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
     }
-    if (_selectedCategory.isNotEmpty && _selectedCategory != 'All') {
-      results = SearchService.filterByCategory(results, _selectedCategory);
-    }
-    setState(() {
-      _searchResults = results;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: AppColors.backgroundLight,
-        body: Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
-          ),
-        ),
-      );
-    }
-
-    final activeUser = _userProfile ?? mockUser;
+    final user = Supabase.instance.client.auth.currentUser;
+    final name = user?.userMetadata?['full_name'] ?? 'User';
+    final email = user?.email ?? '';
+    final initials = name.isNotEmpty ? name.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase() : 'U';
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: AppColors.background,
       body: NestedScrollView(
-        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-          return <Widget>[
-            SliverAppBar(
-              expandedHeight: 250.0,
-              floating: false,
-              pinned: true,
-              backgroundColor: AppColors.primaryBlue,
-              flexibleSpace: FlexibleSpaceBar(
-                background: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 40),
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: Colors.white,
-                        child: Text(
-                          activeUser.profileImage,
-                          style: const TextStyle(fontSize: 36),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        activeUser.name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        activeUser.email,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 14,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          activeUser.status,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+        headerSliverBuilder: (_, __) => [
+          SliverAppBar(
+            expandedHeight: 200,
+            pinned: true,
+            automaticallyImplyLeading: false,
+            backgroundColor: AppColors.primary,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(colors: [AppColors.primaryDark, AppColors.primary], begin: Alignment.topLeft, end: Alignment.bottomRight),
                 ),
-              ),
-            ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _SliverAppBarDelegate(
-                TabBar(
-                  controller: _tabController,
-                  labelColor: AppColors.primaryBlue,
-                  unselectedLabelColor: AppColors.textSecondary,
-                  indicatorColor: AppColors.primaryBlue,
-                  labelStyle: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'Poppins',
-                  ),
-                  tabs: const [
-                    Tab(text: "Activity"),
-                    Tab(text: "Favorites"),
-                    Tab(text: "Settings"),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 40),
+                    CircleAvatar(
+                      radius: 40,
+                      backgroundColor: Colors.white.withOpacity(0.2),
+                      child: Text(initials, style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(name, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    Text(email, style: GoogleFonts.poppins(fontSize: 12, color: Colors.white.withOpacity(0.75))),
                   ],
                 ),
               ),
             ),
-          ];
-        },
+            bottom: TabBar(
+              controller: _tabCtrl,
+              indicatorColor: Colors.white,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white.withOpacity(0.6),
+              labelStyle: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+              tabs: const [
+                Tab(icon: Icon(Icons.history, size: 18), text: 'Activity'),
+                Tab(icon: Icon(Icons.favorite, size: 18), text: 'Favorites'),
+                Tab(icon: Icon(Icons.settings, size: 18), text: 'Settings'),
+              ],
+            ),
+          ),
+        ],
         body: TabBarView(
-          controller: _tabController,
+          controller: _tabCtrl,
           children: [
-            _buildActivityTab(),
-            _buildFavoritesTab(),
-            _buildSettingsTab(),
+            // Activity Tab
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.history, size: 64, color: AppColors.primary.withOpacity(0.3)),
+                  const SizedBox(height: 12),
+                  Text('No recent activity', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Text('Your queue check-ins will appear here', style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+
+            // Favorites Tab
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.favorite_border, size: 64, color: AppColors.primary.withOpacity(0.3)),
+                  const SizedBox(height: 12),
+                  Text('Go to Favorites tab', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Text('Use the bottom nav to see your favorites', style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+
+            // Settings Tab
+            ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text('Edit Profile', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(prefixIcon: Icon(Icons.person_outline), hintText: 'Full Name'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  initialValue: email,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.email_outlined),
+                    hintText: 'Email',
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(prefixIcon: Icon(Icons.phone_outlined), hintText: 'Phone Number'),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _editLoading ? null : _saveProfile,
+                    child: _editLoading
+                        ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                        : const Text('Save Changes'),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                const Divider(),
+                const SizedBox(height: 16),
+                ListTile(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  tileColor: AppColors.statusBusy.withOpacity(0.06),
+                  leading: const Icon(Icons.logout, color: AppColors.statusBusy),
+                  title: Text('Logout', style: GoogleFonts.poppins(color: AppColors.statusBusy, fontWeight: FontWeight.w600)),
+                  onTap: _logout,
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
-  }
-
-  Widget _buildActivityTab() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      itemCount: _searchResults.length,
-      itemBuilder: (context, index) {
-        final location = _searchResults[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
-          child: ListTile(
-            leading: Text(location.icon, style: const TextStyle(fontSize: 24)),
-            title: Text(
-              location.name,
-              style: const TextStyle(
-                fontFamily: 'Poppins',
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: Text(
-              location.address,
-              style: const TextStyle(fontFamily: 'Poppins'),
-            ),
-            trailing: Icon(
-              Icons.circle,
-              color: location.status == 'busy'
-                  ? AppColors.statusBusy
-                  : AppColors.statusEmpty,
-              size: 12,
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildFavoritesTab() {
-    final favoriteLocations = _favoritesProvider.getFavoriteLocations(
-      mockLocations,
-    );
-    if (favoriteLocations.isEmpty) {
-      return const Center(child: Text("No favorites added yet."));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      itemCount: favoriteLocations.length,
-      itemBuilder: (context, index) {
-        final location = favoriteLocations[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
-          child: ListTile(
-            leading: Text(location.icon, style: const TextStyle(fontSize: 24)),
-            title: Text(
-              location.name,
-              style: const TextStyle(
-                fontFamily: 'Poppins',
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: Text('Wait: ~${location.waitTimeMinutes} mins'),
-            trailing: IconButton(
-              icon: const Icon(Icons.favorite, color: AppColors.statusBusy),
-              onPressed: () {
-                setState(() {
-                  _favoritesProvider.toggleFavorite(location.id);
-                });
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSettingsTab() {
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      children: [
-        ListTile(
-          leading: const Icon(
-            Icons.person_outline,
-            color: AppColors.primaryBlue,
-          ),
-          title: const Text(
-            "Edit Profile",
-            style: TextStyle(fontFamily: 'Poppins'),
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showEditProfileDialog(),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.logout, color: AppColors.statusBusy),
-          title: const Text(
-            "Logout",
-            style: TextStyle(
-              color: AppColors.statusBusy,
-              fontFamily: 'Poppins',
-            ),
-          ),
-          onTap: () => _showLogoutDialog(),
-        ),
-      ],
-    );
-  }
-
-  void _showLogoutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text(
-            'Logout',
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: const Text('Are you sure you want to logout?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.statusBusy,
-              ),
-              onPressed: () async {
-                Navigator.pop(context);
-                await _supabaseService.client.auth.signOut();
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/login',
-                  (route) => false,
-                );
-              },
-              child: const Text(
-                'Logout',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
-  _SliverAppBarDelegate(this._tabBar);
-
-  final TabBar _tabBar;
-
-  @override
-  double get minExtent => _tabBar.preferredSize.height;
-  @override
-  double get maxExtent => _tabBar.preferredSize.height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return Container(color: Colors.white, child: _tabBar);
-  }
-
-  @override
-  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return false;
   }
 }

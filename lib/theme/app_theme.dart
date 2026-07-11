@@ -1,154 +1,68 @@
-// ignore_for_file: deprecated_member_use
-
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+class AppColors {
+  static const Color primary = Color(0xFF800842);
+  static const Color primaryLight = Color(0xFFB0306A);
+  static const Color primaryDark = Color(0xFF50002A);
+  static const Color accent = Color(0xFFFF6B9D);
+  static const Color background = Color(0xFFF8F4F6);
+  static const Color surface = Colors.white;
+  static const Color textPrimary = Color(0xFF1A0010);
+  static const Color textSecondary = Color(0xFF7A5060);
+  static const Color statusEmpty = Color(0xFF10B981);
+  static const Color statusModerate = Color(0xFFF59E0B);
+  static const Color statusBusy = Color(0xFFEF4444);
+  static const Color cardBorder = Color(0xFFEDD5E0);
+}
 
 class AppTheme {
-  // Color Palette
-  static const Color primaryColor = Color(0xFF1E3A8A); // Deep Blue
-  static const Color secondaryColor = Color(0xFF3B82F6); // Sky Blue
-  static const Color accentColor = Color(0xFF14B8A6); // Teal
-  static const Color backgroundColor = Color(0xFFF9FAFB); // Light Gray
-  static const Color surfaceColor = Color(0xFFFFFFFF); // White
-  static const Color textPrimaryColor = Color(0xFF111827); // Dark Text
-  static const Color textSecondaryColor = Color(0xFF6B7280); // Gray Text
-  static const Color errorColor = Color(0xFFEF4444);
-
-  // Border Radius
-  static const double borderRadiusSmall = 8;
-  static const double borderRadiusMedium = 12;
-  static const double borderRadiusLarge = 16;
-
-  // Padding & Spacing
-  static const double paddingSmall = 8;
-  static const double paddingMedium = 16;
-  static const double paddingLarge = 20;
-  static const double paddingExtraLarge = 24;
-
-  // Shadow
-  static final BoxShadow softShadow = BoxShadow(
-    color: Colors.black.withOpacity(0.08),
-    blurRadius: 12,
-    offset: const Offset(0, 4),
-  );
-
-  static ThemeData get lightTheme {
+  static ThemeData get theme {
     return ThemeData(
       useMaterial3: true,
-      colorScheme: const ColorScheme.light(
-        primary: primaryColor,
-        secondary: secondaryColor,
-        tertiary: accentColor,
-        background: backgroundColor,
-        surface: surfaceColor,
-        onPrimary: Colors.white,
-        onSecondary: Colors.white,
-        onSurface: textPrimaryColor,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        primary: AppColors.primary,
+        surface: AppColors.surface,
       ),
-      scaffoldBackgroundColor: backgroundColor,
-      fontFamily: 'Poppins',
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(
-          fontSize: 28,
-          fontWeight: FontWeight.bold,
-          color: textPrimaryColor,
-          fontFamily: 'Poppins',
-        ),
-        displayMedium: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-          color: textPrimaryColor,
-          fontFamily: 'Poppins',
-        ),
-        displaySmall: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: textPrimaryColor,
-          fontFamily: 'Poppins',
-        ),
-        headlineMedium: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: textPrimaryColor,
-          fontFamily: 'Poppins',
-        ),
-        bodyLarge: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.normal,
-          color: textPrimaryColor,
-          fontFamily: 'Poppins',
-        ),
-        bodyMedium: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.normal,
-          color: textSecondaryColor,
-          fontFamily: 'Poppins',
-        ),
-        labelLarge: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
+      scaffoldBackgroundColor: AppColors.background,
+      textTheme: GoogleFonts.poppinsTextTheme(),
+      appBarTheme: AppBarTheme(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        titleTextStyle: GoogleFonts.poppins(
           color: Colors.white,
-          fontFamily: 'Poppins',
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: backgroundColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(borderRadiusMedium),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(borderRadiusMedium),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(borderRadiusMedium),
-          borderSide: const BorderSide(color: primaryColor, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(borderRadiusMedium),
-          borderSide: const BorderSide(color: errorColor),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(borderRadiusMedium),
-          borderSide: const BorderSide(color: errorColor, width: 2),
-        ),
-        hintStyle: const TextStyle(
-          color: textSecondaryColor,
-          fontFamily: 'Poppins',
-        ),
-        labelStyle: const TextStyle(
-          color: textPrimaryColor,
-          fontFamily: 'Poppins',
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: paddingMedium,
-          vertical: 12,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primaryColor,
+          backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(borderRadiusMedium),
-          ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: paddingLarge,
-            vertical: paddingMedium,
-          ),
-          textStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            fontFamily: 'Poppins',
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: primaryColor,
-          textStyle: const TextStyle(fontFamily: 'Poppins'),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.cardBorder),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.cardBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+        ),
+        hintStyle: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }

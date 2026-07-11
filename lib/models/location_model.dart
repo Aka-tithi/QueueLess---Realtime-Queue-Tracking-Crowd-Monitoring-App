@@ -1,3 +1,5 @@
+// ignore_for_file: unused_import
+
 class LocationModel {
   final String id;
   final String name;
@@ -21,36 +23,42 @@ class LocationModel {
     required this.icon,
   });
 
-  // সুপাবেস ডাটাবেজ (Map/JSON) থেকে নিখুঁতভাবে ডেটা কনভার্ট করার মেথড
   factory LocationModel.fromJson(Map<String, dynamic> json) {
     return LocationModel(
       id: json['id']?.toString() ?? '',
-      name: json['name'] ?? '',
-      address: json['address'] ?? '',
-      category: json['category'] ?? '',
+      name:
+          json['name']?.toString() ??
+          json['location_name']?.toString() ??
+          'Unknown Location',
+      address: json['address']?.toString() ?? 'Dhaka, Bangladesh',
+      category: json['category']?.toString() ?? 'General',
 
-      // ডাটাবেজের কলাম int না হয়ে অনেক সময় string আসতে পারে, তাই safely পার্স করা হলো
-      queueCount:
-          int.tryParse(json['queue_count']?.toString() ?? '') ??
-          int.tryParse(json['queueCount']?.toString() ?? '') ??
-          0,
+      queueCount: json['queue_count'] is int
+          ? json['queue_count']
+          : int.tryParse(json['queue_count']?.toString() ?? '') ??
+                int.tryParse(json['queueCount']?.toString() ?? '') ??
+                0,
 
-      waitTimeMinutes:
-          int.tryParse(json['wait_time_minutes']?.toString() ?? '') ??
-          int.tryParse(json['estimated_wait_time']?.toString() ?? '') ??
-          int.tryParse(json['waitTimeMinutes']?.toString() ?? '') ??
-          0,
+      waitTimeMinutes: json['wait_time_minutes'] is int
+          ? json['wait_time_minutes']
+          : int.tryParse(json['wait_time_minutes']?.toString() ?? '') ??
+                int.tryParse(json['estimated_wait_time']?.toString() ?? '') ??
+                0,
 
-      status: json['status'] ?? json['queue_status'] ?? 'empty',
+      status:
+          json['status']?.toString() ??
+          json['queue_status']?.toString() ??
+          'empty',
 
-      // রেটিং int বা double যাই আসুক safely ডাবল-এ কনভার্ট হবে
-      rating: double.tryParse(json['rating']?.toString() ?? '') ?? 0.0,
-      icon: json['icon'] ?? '🏢',
+      rating: json['rating'] is num
+          ? (json['rating'] as num).toDouble()
+          : double.tryParse(json['rating']?.toString() ?? '') ?? 4.0,
+
+      icon: json['icon']?.toString() ?? '🏢',
     );
   }
 }
 
-// ৩০টি নতুন লোকেশনসহ আপডেটেড মক ডেটা লিস্ট (Healthcare, Banking, Government)
 final List<LocationModel> mockLocations = [
   // ==================== HEALTHCARE (১০টি লোকেশন) ====================
   LocationModel(

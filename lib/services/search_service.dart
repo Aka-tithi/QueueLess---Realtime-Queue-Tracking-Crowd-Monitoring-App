@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:queueless/models/location_model.dart';
 
@@ -6,6 +7,7 @@ class SearchService {
     List<LocationModel> locations,
     String query,
   ) {
+    if (query.isEmpty) return locations;
     final q = query.toLowerCase();
     return locations
         .where(
@@ -21,6 +23,7 @@ class SearchService {
     List<LocationModel> locations,
     String category,
   ) {
+    if (category.isEmpty || category.toLowerCase() == 'all') return locations;
     return locations
         .where((l) => l.category.toLowerCase() == category.toLowerCase())
         .toList();
@@ -48,17 +51,27 @@ class SearchService {
   }
 
   static Future<void> incrementQueue(String locationId, int currentCount) async {
-    await Supabase.instance.client
-        .from('locations')
-        .update({'queue_count': currentCount + 1})
-        .eq('id', locationId);
+    try {
+      final intNumericId = int.tryParse(locationId);
+      await Supabase.instance.client
+          .from('locations')
+          .update({'queue_count': currentCount + 1})
+          .eq('id', intNumericId ?? locationId);
+    } catch (e) {
+      print('Error incrementing queue: $e');
+    }
   }
 
   static Future<void> decrementQueue(String locationId, int currentCount) async {
     if (currentCount <= 0) return;
-    await Supabase.instance.client
-        .from('locations')
-        .update({'queue_count': currentCount - 1})
-        .eq('id', locationId);
+    try {
+      final intNumericId = int.tryParse(locationId);
+      await Supabase.instance.client
+          .from('locations')
+          .update({'queue_count': currentCount - 1})
+          .eq('id', intNumericId ?? locationId);
+    } catch (e) {
+      print('Error decrementing queue: $e');
+    }
   }
 }

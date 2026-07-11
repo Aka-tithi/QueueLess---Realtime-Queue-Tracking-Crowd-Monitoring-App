@@ -1,386 +1,132 @@
-// ignore_for_file: unused_import, use_super_parameters, deprecated_member_use, prefer_final_fields, unused_field
-
+// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
-import 'package:queueless/models/location_model.dart';
-import 'package:queueless/theme/app_theme.dart';
-import 'package:queueless/utils/constants.dart';
-import 'package:queueless/services/favorites_provider.dart';
-import 'package:queueless/widgets/custom_bottom_navigation.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/location_model.dart';
+import '../services/favorites_provider.dart';
+import '../theme/app_theme.dart';
 
-class FavoritesScreen extends StatefulWidget {
-  const FavoritesScreen({Key? key}) : super(key: key);
+class FavoritesScreen extends StatelessWidget {
+  const FavoritesScreen({super.key});
 
-  @override
-  State<FavoritesScreen> createState() => _FavoritesScreenState();
-}
+  List<LocationModel> _merge(List<Map<String, dynamic>>? db) {
+    final combined = List<LocationModel>.from(mockLocations);
+    if (db != null) {
+      for (final j in db) {
+        final loc = LocationModel.fromJson(j);
+        if (!combined.any((l) => l.id == loc.id)) combined.add(loc);
+      }
+    }
+    return combined;
+  }
 
-class _FavoritesScreenState extends State<FavoritesScreen> {
-  late FavoritesProvider _favoritesProvider;
-  int _currentIndex = 2; // Favorites tab index
-
-  @override
-  void initState() {
-    super.initState();
-    _favoritesProvider = FavoritesProvider();
+  Color _statusColor(String s) {
+    if (s == 'busy') return AppColors.statusBusy;
+    if (s == 'moderate') return AppColors.statusModerate;
+    return AppColors.statusEmpty;
   }
 
   @override
   Widget build(BuildContext context) {
-    final favorites = _favoritesProvider.getFavoriteLocations(mockLocations);
-
+    final fav = Provider.of<FavoritesProvider>(context);
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.primaryBlue,
-        elevation: 4,
-        title: const Row(
-          children: [
-            Icon(Icons.favorite, color: Colors.white, size: 24),
-            SizedBox(width: 8),
-            Text(
-              'My Favorites',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Poppins',
+        title: const Text('My Favorites'),
+        automaticallyImplyLeading: false,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                child: Text('${fav.count} saved', style: GoogleFonts.poppins(color: Colors.white, fontSize: 12)),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-      body: favorites.isEmpty
-          ? Center(
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: Supabase.instance.client.from('locations').stream(primaryKey: ['id']),
+        builder: (context, snap) {
+          final all = _merge(snap.data);
+          final favorites = fav.getFavorites(all);
+
+          if (favorites.isEmpty) {
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('❤️', style: const TextStyle(fontSize: 80)),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'No Favorites Yet',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Add locations to your favorites\nfrom search or home screen',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/search');
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryBlue,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 12,
-                      ),
-                    ),
-                    child: const Text(
-                      'Explore Locations',
-                      style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                  Icon(Icons.favorite_border, size: 72, color: AppColors.primary.withOpacity(0.3)),
+                  const SizedBox(height: 16),
+                  Text('No Favorites Yet', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  Text('Tap the ♥ on any location to save it here', style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary), textAlign: TextAlign.center),
                 ],
               ),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentTeal.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.accentTeal.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info, color: AppColors.accentTeal, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '${favorites.length} favorite${favorites.length > 1 ? 's' : ''} saved',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.accentTeal,
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Column(
-                    children: favorites
-                        .map((location) => _buildFavoriteCard(location))
-                        .toList(),
-                  ),
-                ],
-              ),
-            ),
-      bottomNavigationBar: CustomBottomNavigation(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() => _currentIndex = index);
-          _handleNavigation(index);
-        },
-      ),
-    );
-  }
+            );
+          }
 
-  Widget _buildFavoriteCard(LocationModel location) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(location.icon, style: const TextStyle(fontSize: 48)),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: favorites.length,
+            itemBuilder: (_, i) {
+              final loc = favorites[i];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.cardBorder),
+                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.05), blurRadius: 8)],
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      location.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Poppins',
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    Container(
+                      width: 52, height: 52,
+                      decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+                      child: Center(child: Text(loc.icon, style: const TextStyle(fontSize: 26))),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      location.address,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Poppins',
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(loc.name, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(loc.address, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: _statusColor(loc.status).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                child: Text(loc.status.toUpperCase(), style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w700, color: _statusColor(loc.status))),
+                              ),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.people, size: 12, color: AppColors.textSecondary),
+                              Text(' ${loc.queueCount}', style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.timer_outlined, size: 12, color: AppColors.textSecondary),
+                              Text(' ${loc.waitTimeMinutes}min', style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+                            ],
+                          ),
+                        ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    ),
+                    GestureDetector(
+                      onTap: () => fav.toggleFavorite(loc.id),
+                      child: const Icon(Icons.favorite, color: AppColors.statusBusy, size: 26),
                     ),
                   ],
                 ),
-              ),
-              IconButton(
-                onPressed: () {
-                  _favoritesProvider.removeFavorite(location.id);
-                  setState(() {});
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Removed from favorites'),
-                      duration: const Duration(seconds: 2),
-                      backgroundColor: AppColors.statusBusy,
-                    ),
-                  );
-                },
-                icon: const Icon(
-                  Icons.favorite,
-                  color: AppColors.statusBusy,
-                  size: 24,
-                ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Category Badge
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.accentTeal.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: AppColors.accentTeal.withOpacity(0.3),
-                  ),
-                ),
-                child: Text(
-                  location.category,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accentTeal,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ),
-              // Status Badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(location.status).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: _getStatusColor(location.status).withOpacity(0.3),
-                  ),
-                ),
-                child: Text(
-                  location.status.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: _getStatusColor(location.status),
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Rating
-              Row(
-                children: [
-                  Icon(Icons.star, size: 14, color: Colors.amber[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    location.rating.toString(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Icon(
-                    Icons.schedule,
-                    size: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${location.waitTimeMinutes} min',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Icon(Icons.people, size: 14, color: AppColors.textSecondary),
-                  const SizedBox(width: 4),
-                  Text(
-                    location.queueCount.toString(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                ],
-              ),
-              GestureDetector(
-                onTap: () {
-                  // TODO: View location details
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryBlue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: AppColors.primaryBlue.withOpacity(0.3),
-                    ),
-                  ),
-                  child: const Text(
-                    'View',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primaryBlue,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+              );
+            },
+          );
+        },
       ),
     );
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'empty':
-        return AppColors.statusEmpty;
-      case 'moderate':
-        return AppColors.statusModerate;
-      case 'busy':
-        return AppColors.statusBusy;
-      default:
-        return AppColors.textSecondary;
-    }
-  }
-
-  void _handleNavigation(int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
-        break;
-      case 1:
-        Navigator.pushNamed(context, '/search');
-        break;
-      case 3:
-        Navigator.pushNamed(context, '/profile');
-        break;
-    }
   }
 }

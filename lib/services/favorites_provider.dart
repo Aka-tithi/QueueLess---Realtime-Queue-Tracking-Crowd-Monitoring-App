@@ -1,45 +1,23 @@
-// ignore_for_file: prefer_final_fields
-
 import 'package:flutter/material.dart';
-import 'package:queueless/models/location_model.dart';
+import '../models/location_model.dart';
 
 class FavoritesProvider extends ChangeNotifier {
-  List<String> _favoriteIds = ['1', '2', '4', '5'];
+  final Set<String> _favoriteIds = {};
 
-  List<String> get favoriteIds => _favoriteIds;
+  Set<String> get favoriteIds => _favoriteIds;
+  int get count => _favoriteIds.length;
 
-  bool isFavorite(String locationId) {
-    return _favoriteIds.contains(locationId);
-  }
+  bool isFavorite(String id) => _favoriteIds.contains(id);
 
-  void toggleFavorite(String locationId) {
-    if (_favoriteIds.contains(locationId)) {
-      _favoriteIds.remove(locationId);
+  void toggleFavorite(String id) {
+    if (_favoriteIds.contains(id)) {
+      _favoriteIds.remove(id);
     } else {
-      _favoriteIds.add(locationId);
+      _favoriteIds.add(id);
     }
     notifyListeners();
   }
 
-  void addFavorite(String locationId) {
-    if (!_favoriteIds.contains(locationId)) {
-      _favoriteIds.add(locationId);
-      notifyListeners();
-    }
-  }
-
-  void removeFavorite(String locationId) {
-    if (_favoriteIds.contains(locationId)) {
-      _favoriteIds.remove(locationId);
-      notifyListeners();
-    }
-  }
-
-  List<LocationModel> getFavoriteLocations(List<LocationModel> allLocations) {
-    return allLocations
-        .where((location) => _favoriteIds.contains(location.id))
-        .toList();
-  }
-
-  int get favoriteCount => _favoriteIds.length;
+  List<LocationModel> getFavorites(List<LocationModel> all) =>
+      all.where((l) => _favoriteIds.contains(l.id)).toList();
 }

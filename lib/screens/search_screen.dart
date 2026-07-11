@@ -1,860 +1,242 @@
-// ignore_for_file: unused_local_variable, use_super_parameters, deprecated_member_use, unused_import, prefer_final_fields, unused_field
-import 'package:supabase_flutter/supabase_flutter.dart';
+// ignore_for_file: deprecated_member_use, prefer_final_fields
 import 'package:flutter/material.dart';
-import 'package:queueless/models/location_model.dart';
-import 'package:queueless/theme/app_theme.dart';
-import 'package:queueless/utils/constants.dart';
-import 'package:queueless/services/search_service.dart';
-import 'package:queueless/services/favorites_provider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/location_model.dart';
+import '../services/favorites_provider.dart';
+import '../theme/app_theme.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({Key? key}) : super(key: key);
-
+  const SearchScreen({super.key});
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  late TextEditingController _searchController;
-  late FavoritesProvider _favoritesProvider;
-  List<LocationModel> _searchResults = [];
-  String _selectedCategory = '';
-  String _selectedStatus = '';
-  String _sortBy = 'rating'; // 'rating' or 'waitTime'
-  bool _isSearching = false;
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  String _category = '';
+  String _status = '';
+  String _sort = 'rating';
 
   @override
-  void initState() {
-    super.initState();
-    _searchController = TextEditingController();
-    _favoritesProvider = FavoritesProvider();
-    _updateSearchResults();
-  }
+  void dispose() { _searchCtrl.dispose(); super.dispose(); }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _performSearch(String query) {
-    setState(() {
-      _isSearching = query.isNotEmpty;
-    });
-    _updateSearchResults();
-  }
-
-  void _updateSearchResults() async {
-    try {
-      final response = await Supabase.instance.client
-          .from('locations')
-          .select();
-      final List<dynamic> data = response as List<dynamic>;
-
-      List<LocationModel> results = data
-          .map((json) => LocationModel.fromJson(json))
-          .toList();
-
-      if (_searchController.text.isNotEmpty) {
-        results = SearchService.searchLocations(
-          results,
-          _searchController.text,
-        );
+  List<LocationModel> _merge(List<Map<String, dynamic>>? db) {
+    final combined = List<LocationModel>.from(mockLocations);
+    if (db != null) {
+      for (final j in db) {
+        final loc = LocationModel.fromJson(j);
+        if (!combined.any((l) => l.id == loc.id)) combined.add(loc);
       }
-
-      if (_selectedCategory.isNotEmpty) {
-        results = SearchService.filterByCategory(results, _selectedCategory);
-      }
-
-      if (_selectedStatus.isNotEmpty) {
-        results = SearchService.filterByStatus(results, _selectedStatus);
-      }
-
-      if (_sortBy == 'rating') {
-        results = SearchService.sortByRating(results);
-      } else if (_sortBy == 'waitTime') {
-        results = SearchService.sortByWaitTime(results);
-      }
-
-      setState(() {
-        _searchResults = results;
-      });
-    } catch (e) {
-      debugPrint("Error fetching data: $e");
     }
+    return combined;
   }
 
-  void _clearFilters() {
-    setState(() {
-      _searchController.clear();
-      _selectedCategory = '';
-      _selectedStatus = '';
-      _sortBy = 'rating';
-      _isSearching = false;
-    });
-    _updateSearchResults();
+  List<LocationModel> _filter(List<LocationModel> all) {
+    var list = all;
+    if (_query.isNotEmpty) {
+      final q = _query.toLowerCase();
+      list = list.where((l) => l.name.toLowerCase().contains(q) || l.address.toLowerCase().contains(q) || l.category.toLowerCase().contains(q)).toList();
+    }
+    if (_category.isNotEmpty) list = list.where((l) => l.category == _category).toList();
+    if (_status.isNotEmpty) list = list.where((l) => l.status == _status).toList();
+    if (_sort == 'rating') list.sort((a, b) => b.rating.compareTo(a.rating));
+    if (_sort == 'wait') list.sort((a, b) => a.waitTimeMinutes.compareTo(b.waitTimeMinutes));
+    if (_sort == 'queue') list.sort((a, b) => a.queueCount.compareTo(b.queueCount));
+    return list;
+  }
+
+  Color _statusColor(String s) {
+    if (s == 'busy') return AppColors.statusBusy;
+    if (s == 'moderate') return AppColors.statusModerate;
+    return AppColors.statusEmpty;
   }
 
   @override
   Widget build(BuildContext context) {
-    // হোম স্ক্রিন থেকে পাঠানো সব লোকেশন রিসিভ করা হচ্ছে
-    final arguments = ModalRoute.of(context)?.settings.arguments;
-    List<LocationModel> allLocations = [];
-
-    if (arguments is List<LocationModel>) {
-      allLocations = arguments;
-    } else {
-      allLocations = List.from(mockLocations); // ব্যাকআপ
-    }
+    final fav = Provider.of<FavoritesProvider>(context);
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.primaryBlue,
-        elevation: 0,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-        ),
-        title: const Text(
-          'Search Locations',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Poppins',
-          ),
-        ),
-        centerTitle: false,
-      ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: AppColors.primaryBlue,
+        title: const Text('Search Locations'),
+        automaticallyImplyLeading: false,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(110),
+          child: Container(
+            color: AppColors.primary,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search, color: AppColors.textSecondary),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: _performSearch,
-                          decoration: const InputDecoration(
-                            hintText: 'Search locations, categories...',
-                            border: InputBorder.none,
-                            hintStyle: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (_searchController.text.isNotEmpty)
-                        IconButton(
-                          onPressed: () {
-                            _searchController.clear();
-                            _performSearch('');
-                          },
-                          icon: const Icon(
-                            Icons.close,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                    ],
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    onChanged: (v) => setState(() => _query = v),
+                    decoration: InputDecoration(
+                      hintText: 'Search hospitals, banks, offices...',
+                      prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
+                      suffixIcon: _query.isNotEmpty
+                          ? IconButton(icon: const Icon(Icons.close), onPressed: () { _searchCtrl.clear(); setState(() => _query = ''); })
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildFilterButton(
-                        icon: Icons.filter_list,
-                        label: 'Filters',
-                        onTap: _showFilterModal,
-                      ),
-                      _buildFilterButton(
-                        icon: Icons.sort,
-                        label: _sortBy == 'rating' ? 'Rating' : 'Wait Time',
-                        onTap: _showSortModal,
-                      ),
-                      if (_selectedCategory.isNotEmpty ||
-                          _selectedStatus.isNotEmpty ||
-                          _searchController.text.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: GestureDetector(
-                            onTap: _clearFilters,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.statusBusy.withOpacity(0.1),
-                                border: Border.all(color: AppColors.statusBusy),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.close,
-                                    size: 14,
-                                    color: AppColors.statusBusy,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Text(
-                                    'Clear',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.statusBusy,
-                                      fontFamily: 'Poppins',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
+                      _filterChip('All', _category.isEmpty, () => setState(() => _category = '')),
+                      _filterChip('Healthcare', _category == 'Healthcare', () => setState(() => _category = _category == 'Healthcare' ? '' : 'Healthcare')),
+                      _filterChip('Banking', _category == 'Banking', () => setState(() => _category = _category == 'Banking' ? '' : 'Banking')),
+                      _filterChip('Government', _category == 'Government', () => setState(() => _category = _category == 'Government' ? '' : 'Government')),
+                      const SizedBox(width: 8),
+                      _sortChip(),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          Expanded(
-            child: _searchResults.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _isSearching ? '🔍' : '🏢',
-                          style: const TextStyle(fontSize: 60),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          _isSearching
-                              ? 'No locations found'
-                              : 'Enter search term',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _isSearching
-                              ? 'Try different keywords or filters'
-                              : 'Search for banks, hospitals, offices...',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: AppColors.textSecondary,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _searchResults.length,
-                    itemBuilder: (context, index) {
-                      final location = _searchResults[index];
-                      return _buildSearchResultCard(location);
-                    },
-                  ),
-          ),
-        ],
+        ),
+      ),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: Supabase.instance.client.from('locations').stream(primaryKey: ['id']),
+        builder: (context, snap) {
+          final results = _filter(_merge(snap.data));
+          if (results.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('🔍', style: TextStyle(fontSize: 56)),
+                  const SizedBox(height: 12),
+                  Text('No locations found', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Text('Try different keywords', style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+                ],
+              ),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: results.length,
+            itemBuilder: (_, i) => _locationCard(results[i], fav),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildFilterButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
+  Widget _filterChip(String label, bool selected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.white.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? AppColors.primary : Colors.white.withOpacity(0.4)),
+        ),
+        child: Text(label, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500, color: selected ? AppColors.primary : Colors.white)),
+      ),
+    );
+  }
+
+  Widget _sortChip() {
+    final labels = {'rating': 'Top Rated', 'wait': 'Least Wait', 'queue': 'Least Queue'};
+    return GestureDetector(
+      onTap: () {
+        final keys = labels.keys.toList();
+        final next = keys[(keys.indexOf(_sort) + 1) % keys.length];
+        setState(() => _sort = next);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.2),
-          border: Border.all(color: Colors.white.withOpacity(0.4)),
           borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.4)),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 16),
+            const Icon(Icons.sort, color: Colors.white, size: 14),
             const SizedBox(width: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-                fontFamily: 'Poppins',
-              ),
-            ),
+            Text(labels[_sort]!, style: GoogleFonts.poppins(fontSize: 12, color: Colors.white)),
           ],
         ),
       ),
     );
   }
 
-  void _showFilterModal() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Filter by Category',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: ['Banking', 'Healthcare', 'Government', 'Other']
-                        .map(
-                          (category) => GestureDetector(
-                            onTap: () {
-                              setModalState(() {
-                                _selectedCategory =
-                                    _selectedCategory == category
-                                    ? ''
-                                    : category;
-                              });
-                              _updateSearchResults();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _selectedCategory == category
-                                    ? AppColors.accentTeal
-                                    : Colors.grey[200],
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                category,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _selectedCategory == category
-                                      ? Colors.white
-                                      : AppColors.textPrimary,
-                                  fontFamily: 'Poppins',
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Filter by Status',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: ['empty', 'moderate', 'busy']
-                        .map(
-                          (status) => GestureDetector(
-                            onTap: () {
-                              setModalState(() {
-                                _selectedStatus = _selectedStatus == status
-                                    ? ''
-                                    : status;
-                              });
-                              _updateSearchResults();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _selectedStatus == status
-                                    ? _getStatusColor(status)
-                                    : Colors.grey[200],
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                status.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _selectedStatus == status
-                                      ? Colors.white
-                                      : AppColors.textPrimary,
-                                  fontFamily: 'Poppins',
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                      ),
-                      child: const Text(
-                        'Apply Filters',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showSortModal() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Sort by',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSortOption(
-                    title: 'Highest Rating',
-                    subtitle: 'Top rated locations first',
-                    isSelected: _sortBy == 'rating',
-                    onTap: () {
-                      setModalState(() => _sortBy = 'rating');
-                      _updateSearchResults();
-                      Navigator.pop(context);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSortOption(
-                    title: 'Shortest Wait Time',
-                    subtitle: 'Least queue first',
-                    isSelected: _sortBy == 'waitTime',
-                    onTap: () {
-                      setModalState(() => _sortBy = 'waitTime');
-                      _updateSearchResults();
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildSortOption({
-    required String title,
-    required String subtitle,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primaryBlue.withOpacity(0.1)
-              : Colors.grey[100],
-          border: Border.all(
-            color: isSelected ? AppColors.primaryBlue : const Color(0xFFE5E7EB),
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected
-                      ? AppColors.primaryBlue
-                      : AppColors.textSecondary,
-                  width: 2,
-                ),
-              ),
-              child: isSelected
-                  ? Center(
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.primaryBlue,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSearchResultCard(LocationModel location) {
-    final isFavorite = _favoritesProvider.isFavorite(location.id);
-
+  Widget _locationCard(LocationModel loc, FavoritesProvider fav) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.05), blurRadius: 8)],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Text(location.icon, style: const TextStyle(fontSize: 40)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Container(
+            width: 52, height: 52,
+            decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+            child: Center(child: Text(loc.icon, style: const TextStyle(fontSize: 26))),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(loc.name, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(loc.address, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+                const SizedBox(height: 6),
+                Row(
                   children: [
-                    Text(
-                      location.name,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Poppins',
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      location.address,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
+                    _tag(loc.category, AppColors.primary.withOpacity(0.1), AppColors.primary),
+                    const SizedBox(width: 6),
+                    _tag(loc.status.toUpperCase(), _statusColor(loc.status).withOpacity(0.1), _statusColor(loc.status)),
+                    const Spacer(),
+                    const Icon(Icons.star, size: 12, color: Colors.amber),
+                    Text(' ${loc.rating}', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
                   ],
                 ),
-              ),
-              IconButton(
-                onPressed: () {
-                  _favoritesProvider.toggleFavorite(location.id);
-                  setState(() {});
-                },
-                icon: Icon(
-                  isFavorite ? Icons.favorite : Icons.favorite_border,
-                  color: isFavorite
-                      ? AppColors.statusBusy
-                      : AppColors.textSecondary,
-                  size: 22,
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.people, size: 12, color: AppColors.textSecondary),
+                    Text(' ${loc.queueCount} people', style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+                    const SizedBox(width: 10),
+                    const Icon(Icons.timer_outlined, size: 12, color: AppColors.textSecondary),
+                    Text(' ${loc.waitTimeMinutes} min', style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.accentTeal.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: AppColors.accentTeal.withOpacity(0.3),
-                  ),
-                ),
-                child: Text(
-                  location.category,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accentTeal,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(location.status).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: _getStatusColor(location.status).withOpacity(0.3),
-                  ),
-                ),
-                child: Text(
-                  location.status.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: _getStatusColor(location.status),
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.star, size: 14, color: Colors.amber[600]),
-                  const SizedBox(width: 3),
-                  Text(
-                    location.rating.toString(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 1,
-                    height: 12,
-                    color: const Color(0xFFE5E7EB),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(
-                    Icons.schedule,
-                    size: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    '${location.waitTimeMinutes} min',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                ],
-              ),
-
-              // Week 9: Admin buttons Integration
-              Row(
-                children: [
-                  const Icon(
-                    Icons.people,
-                    size: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    location.queueCount.toString(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: () async {
-                      try {
-                        await SearchService.decrementQueue(
-                          location.id,
-                          location.queueCount,
-                        );
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                        }
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.remove,
-                        size: 14,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () async {
-                      try {
-                        await SearchService.incrementQueue(
-                          location.id,
-                          location.queueCount,
-                        );
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                        }
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryBlue.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.add,
-                        size: 14,
-                        color: AppColors.primaryBlue,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          GestureDetector(
+            onTap: () => fav.toggleFavorite(loc.id),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Icon(fav.isFavorite(loc.id) ? Icons.favorite : Icons.favorite_border,
+                  color: fav.isFavorite(loc.id) ? AppColors.statusBusy : AppColors.textSecondary),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'empty':
-        return AppColors.statusEmpty;
-      case 'moderate':
-        return AppColors.statusModerate;
-      case 'busy':
-        return AppColors.statusBusy;
-      default:
-        return AppColors.textSecondary;
-    }
-  }
+  Widget _tag(String text, Color bg, Color fg) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4)),
+    child: Text(text, style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w700, color: fg)),
+  );
 }
